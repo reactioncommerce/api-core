@@ -1,4 +1,4 @@
-import importAsString from "@reactioncommerce/api-utils/importAsString.js";
+import importAsString from "@reactioncommerce/api-utils/lib/importAsString.js";
 import ReactionAPICore from "./ReactionAPICore.js";
 import appEvents from "./util/appEvents.js";
 import coreResolvers from "./graphql/resolvers/index.js";
