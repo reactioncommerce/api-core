@@ -1,1 +1,1 @@
-module.exports = require("@reactioncommerce/api-utils/configs/jest.config.cjs");
+module.exports = require("@reactioncommerce/api-utils/jest.config.cjs");

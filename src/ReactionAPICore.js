@@ -7,7 +7,7 @@ import mongodb from "mongodb";
 import SimpleSchema from "simpl-schema";
 import collectionIndex from "@reactioncommerce/api-utils/collectionIndex.js";
 import getAbsoluteUrl from "@reactioncommerce/api-utils/getAbsoluteUrl.js";
-import importAsString from "@reactioncommerce/api-utils/importAsString.js";
+import importAsString from "@reactioncommerce/api-utils/lib/importAsString.js";
 import Logger from "@reactioncommerce/logger";
 import builtInAppEvents from "./util/appEvents.js";
 import checkAppEventsInterface from "./util/checkAppEventsInterface.js";
