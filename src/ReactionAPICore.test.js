@@ -14,7 +14,10 @@ test("no options", () => {
   expect(api.functionsByType).toEqual({});
   expect(api.functionsByType).toEqual({});
   expect(Object.keys(api.graphQL.resolvers)).toEqual(Object.keys(coreResolvers));
-  expect(api.graphQL.schemas).toEqual([coreGraphQLSchema, coreGraphQLSubscriptionSchema]);
+  expect(api.graphQL.schemas).toEqual([
+    coreGraphQLSchema,
+    coreGraphQLSubscriptionSchema
+  ]);
   expect(api.hasSubscriptionsEnabled).toBe(true);
   expect(api.rootUrl).toBe("http://localhost:3000/");
   expect(api.context.rootUrl).toBe("http://localhost:3000/");
