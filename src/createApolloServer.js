@@ -118,7 +118,8 @@ export default function createApolloServer(options = {}) {
     schema,
     subscriptions,
     introspection: config.GRAPHQL_INTROSPECTION_ENABLED,
-    playground: config.GRAPHQL_PLAYGROUND_ENABLED
+    playground: config.GRAPHQL_PLAYGROUND_ENABLED,
+    uploads: false
   });
 
   const gqlMiddleware = expressMiddleware.filter((def) => def.route === "graphql" || def.route === "all");
