@@ -161,6 +161,12 @@ export default function createApolloServer(options = {}) {
     app.handle(req, res);
   });
 
+  // Add a health check API
+  app.all("/health", (req, res) => {
+    res.status(200);
+    res.send("Server running");
+  });
+
   apolloServer.applyMiddleware({ app, cors: true, path });
 
   return {
