@@ -57,3 +57,67 @@ test("throws error if appEvents is missing any props", () => {
     expect(error.message).toBe("appEvents is missing the following required function properties: emit, on, resume, stop");
   }
 });
+
+test.only("getCollection should return correct values", async () => {
+  const collectionConfig = { name: "Test" };
+  const mockCollection = {
+    find: jest.fn().mockReturnValue({}),
+    deleteOne: jest.fn().mockReturnValue({ deletedCount: 1, acknowledged: true }),
+    updateMany: jest.fn().mockReturnValue({ modifiedCount: 2, acknowledged: true }),
+    insertOne: jest.fn().mockReturnValue({ acknowledged: true }),
+    findOneAndUpdate: jest.fn().mockReturnValue({ ok: 1 }),
+    replaceOne: jest.fn().mockReturnValue({ acknowledged: true }),
+    updateOne: jest.fn().mockReturnValue({ acknowledged: true }),
+    // eslint-disable-next-line id-length
+    s: {
+      db: jest.fn(),
+      namespace: {
+        db: "test_db",
+        collection: "test_collection"
+      }
+    }
+  };
+
+  const api = new ReactionAPICore();
+
+  api.db = {
+    collection: () => ({ ...mockCollection }),
+    command: jest.fn()
+  };
+
+  const collection = await api.getCollection(collectionConfig, {});
+  expect(api.db.command).toBeCalled();
+
+  collection.find({});
+  expect(mockCollection.find).toBeCalled();
+
+  const deleteOneResult = await collection.deleteOne({});
+  expect(mockCollection.deleteOne).toBeCalled();
+  // eslint-disable-next-line id-length
+  expect(deleteOneResult).toEqual({ ...deleteOneResult, result: { n: 1, ok: true } });
+
+  const updateManyResult = await collection.updateMany({});
+  expect(mockCollection.updateMany).toBeCalled();
+  // eslint-disable-next-line id-length
+  expect(updateManyResult).toEqual({ ...updateManyResult, result: { n: 2, ok: true } });
+
+  const insertOneResult = await collection.insertOne({});
+  expect(mockCollection.insertOne).toBeCalled();
+  // eslint-disable-next-line id-length
+  expect(insertOneResult).toEqual({ ...insertOneResult, result: { n: 1, ok: 1 } });
+
+  const findOneAndUpdateResult = await collection.findOneAndUpdate({});
+  expect(mockCollection.findOneAndUpdate).toBeCalled();
+  // eslint-disable-next-line id-length
+  expect(findOneAndUpdateResult).toEqual({ ...findOneAndUpdateResult, modifiedCount: 1 });
+
+  const replaceOneResult = await collection.replaceOne({});
+  expect(mockCollection.replaceOne).toBeCalled();
+  // eslint-disable-next-line id-length
+  expect(replaceOneResult).toEqual({ ...replaceOneResult, result: { n: 1, ok: 1 } });
+
+  const updateOneResult = await collection.updateOne({});
+  expect(mockCollection.updateOne).toBeCalled();
+  // eslint-disable-next-line id-length
+  expect(updateOneResult).toEqual({ ...updateOneResult, result: { n: 1, ok: 1 } });
+});

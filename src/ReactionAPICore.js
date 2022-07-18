@@ -118,7 +118,6 @@ export default class ReactionAPICore {
     this.options = { ...options };
 
     this.collections = {};
-    this._collectionQueries = {};
 
     this.version = options.version || null;
 
@@ -301,96 +300,106 @@ export default class ReactionAPICore {
     }
   }
 
-  getCollectionQuery(collectionName, result) {
-    if (!this._collectionQueries[collectionName]) {
-      this._collectionQueries[collectionName] = result[Reflect.ownKeys(result).find((symbol) => String(symbol) === "Symbol(filter)")];
+  /**
+   * @summary Get legacy collection object
+   * @param {Object} collectionConfig - The collection config
+   * @param {Object} collectionOptions - The collection options
+   * @returns {Object} - legacy collection
+   */
+  async getRawCollection(collectionConfig, collectionOptions) {
+    try {
+      return this.db.collection(collectionConfig.name, collectionOptions);
+    } catch {
+      return this.db
+        .command({ collMod: collectionConfig.name, ...collectionOptions });
     }
-
-    return this._collectionQueries[collectionName];
   }
 
+  /**
+   * @summary Get modified collection object
+   * @param {Object} collectionConfig - The collection config
+   * @param {Object} collectionOptions - The collection options
+   * @returns {Object} - Modified collection
+   */
   async getCollection(collectionConfig, collectionOptions) {
-    try {
-      const collection = this.db.collection(collectionConfig.name, { strict: true });
+    const collection = await this.getRawCollection(collectionConfig, collectionOptions);
+    await this.db
+      .command({
+        collMod: collectionConfig.name,
+        ...collectionOptions
+      });
+    return this.applyMongoV3BackwardCompatible(collection);
+  }
 
-      const prevFind = collection.find;
-      collection.find = (...args) => {
-        const result = prevFind.bind(collection)(...args);
-        result.cmd = { query: this.getCollectionQuery(collectionConfig.name, result) };
-        result.options = { db: collection.s.db };
-        result.ns = `${collection.s.namespace.db}.${collection.s.namespace.collection}`;
-        result.Collection = collection;
-        return result;
-      };
+  /**
+   * @summary Apply MongoV3 backward compatible
+   * @param {Object} collection - The legacy collection object
+   * @returns {Object} - The modified collection object
+   */
+  async applyMongoV3BackwardCompatible(collection) {
+    const prevFind = collection.find.bind(collection);
+    collection.find = (...args) => {
+      const result = prevFind(...args);
+      result.cmd = { query: result[Reflect.ownKeys(result).find((symbol) => String(symbol) === "Symbol(filter)")] };
+      result.options = { db: collection.s.db };
+      result.ns = `${collection.s.namespace.db}.${collection.s.namespace.collection}`;
+      result.Collection = collection;
+      return result;
+    };
 
-      const prevDeleteOne = collection.deleteOne.bind(collection);
+    const prevDeleteOne = collection.deleteOne.bind(collection);
+    collection.deleteOne = async (...args) => {
+      const response = await prevDeleteOne(...args);
+      const { deletedCount: n, acknowledged: ok } = response;
+      // eslint-disable-next-line id-length
+      return { ...response, result: { n, ok } };
+    };
 
-      collection.deleteOne = async (...args) => {
-        const response = await prevDeleteOne(...args);
-        const { deletedCount: n, acknowledged: ok } = response;
-        // eslint-disable-next-line id-length
-        return { ...response, result: { n, ok } };
-      };
+    const prevUpdateMany = collection.updateMany.bind(collection);
+    collection.updateMany = async (...args) => {
+      const response = await prevUpdateMany(...args);
+      const { modifiedCount: n, acknowledged: ok } = response;
+      // eslint-disable-next-line id-length
+      return { ...response, result: { n, ok } };
+    };
 
-      const prevUpdateMany = collection.updateMany.bind(collection);
-      collection.updateMany = async (...args) => {
-        const response = await prevUpdateMany(...args);
-        const { modifiedCount: n, acknowledged: ok } = response;
-        // eslint-disable-next-line id-length
-        return { ...response, result: { n, ok } };
-      };
+    const prevInsertOne = collection.insertOne.bind(collection);
+    collection.insertOne = async (...args) => {
+      const response = await prevInsertOne(...args);
+      // eslint-disable-next-line id-length
+      const count = response.acknowledged ? 1 : 0;
+      // eslint-disable-next-line id-length
+      return { ...response, result: { n: count, ok: count } };
+    };
 
-      const prevInsertOne = collection.insertOne.bind(collection);
-      collection.insertOne = async (...args) => {
-        const response = await prevInsertOne(...args);
-        // eslint-disable-next-line id-length
-        const count = response.acknowledged ? 1 : 0;
-        // eslint-disable-next-line id-length
-        return { ...response, result: { n: count, ok: count } };
-      };
+    const prevFindOneAndUpdate = collection.findOneAndUpdate.bind(collection);
+    collection.findOneAndUpdate = async (...args) => {
+      const options = args[2];
+      if (options && typeof options.returnOriginal !== "undefined") {
+        args[2].returnDocument = options.returnOriginal ? mongodb.ReturnDocument.BEFORE : mongodb.ReturnDocument.AFTER;
+      }
+      const response = await prevFindOneAndUpdate(...args);
+      const { ok } = response;
+      return { ...response, modifiedCount: ok };
+    };
 
-      const prevFindOneAndUpdate = collection.findOneAndUpdate.bind(collection);
-      collection.findOneAndUpdate = async (...args) => {
-        const response = await prevFindOneAndUpdate(...args);
-        const { ok } = response;
-        return { ...response, modifiedCount: ok };
-      };
+    const prevReplaceOne = collection.replaceOne.bind(collection);
+    collection.replaceOne = async (...args) => {
+      const response = await prevReplaceOne(...args);
+      const count = response.acknowledged ? 1 : 0;
+      // eslint-disable-next-line id-length
+      return { ...response, result: { n: count, ok: count } };
+    };
 
-      const prevReplaceOne = collection.replaceOne.bind(collection);
-      collection.replaceOne = async (...args) => {
-        const response = await prevReplaceOne(...args);
-        const count = response.acknowledged ? 1 : 0;
-        // eslint-disable-next-line id-length
-        return { ...response, result: { n: count, ok: count } };
-      };
+    const prevUpdateOne = collection.updateOne.bind(collection);
+    collection.updateOne = async (...args) => {
+      const response = await prevUpdateOne(...args);
+      const count = response.acknowledged ? 1 : 0;
+      // eslint-disable-next-line id-length
+      return { ...response, result: { n: count, ok: count } };
+    };
 
-      const prevUpdateOne = collection.updateOne.bind(collection);
-      collection.updateOne = async (...args) => {
-        const response = await prevUpdateOne(...args);
-        const count = response.acknowledged ? 1 : 0;
-        // eslint-disable-next-line id-length
-        return { ...response, result: { n: count, ok: count } };
-      };
-
-      await this.db
-        .command({
-          collMod: collectionConfig.name,
-          ...collectionOptions
-        });
-      return collection;
-    } catch (error) {
-      const collection = await this.db
-        .command({
-          collMod: collectionConfig.name,
-          ...collectionOptions
-        });
-      collection.find = (...args) => {
-        const result = collection.find(...args);
-        result.Collection = collection;
-        return result;
-      };
-      return collection;
-    }
+    return collection;
   }
 
   /**
