@@ -118,6 +118,7 @@ export default class ReactionAPICore {
     this.options = { ...options };
 
     this.collections = {};
+    this._collectionQueries = {};
 
     this.version = options.version || null;
 
@@ -276,43 +277,13 @@ export default class ReactionAPICore {
               // Add the collection instance to `context.collections`.
               // If the collection already exists, we need to modify it instead of calling
               // `createCollection`, in order to add validation options.
-              const getCollectionPromise = new Promise((resolve, reject) => {
-                this.db.collection(
-                  collectionConfig.name,
-                  { strict: true },
-                  (error, collection) => {
-                    if (error) {
-                      // Collection with this name doesn't yet exist
-                      this.db
-                        .createCollection(
-                          collectionConfig.name,
-                          collectionOptions
-                        )
-                        .then((newCollection) => {
-                          resolve(newCollection);
-                          return null;
-                        })
-                        .catch(reject);
-                    } else {
-                      // Collection with this name exists, so modify before resolving
-                      this.db
-                        .command({
-                          collMod: collectionConfig.name,
-                          ...collectionOptions
-                        })
-                        .then(() => {
-                          resolve(collection);
-                          return null;
-                        })
-                        .catch(reject);
-                    }
-                  }
-                );
-              });
+              // eslint-disable-next-line no-await-in-loop
+              this.collections[collectionKey] = await this.getCollection(collectionConfig, collectionOptions); //
+
 
               /* eslint-enable promise/no-promise-in-callback */
 
-              this.collections[collectionKey] = await getCollectionPromise; // eslint-disable-line no-await-in-loop
+              // this.collections[collectionKey] = await getCollectionPromise; // eslint-disable-line no-await-in-loop
 
               // If the collection config has `indexes` key, define all requested indexes
               if (Array.isArray(collectionConfig.indexes)) {
@@ -327,6 +298,98 @@ export default class ReactionAPICore {
           }
         }
       }
+    }
+  }
+
+  getCollectionQuery(collectionName, result) {
+    if (!this._collectionQueries[collectionName]) {
+      this._collectionQueries[collectionName] = result[Reflect.ownKeys(result).find((symbol) => String(symbol) === "Symbol(filter)")];
+    }
+
+    return this._collectionQueries[collectionName];
+  }
+
+  async getCollection(collectionConfig, collectionOptions) {
+    try {
+      const collection = this.db.collection(collectionConfig.name, { strict: true });
+
+      const prevFind = collection.find;
+      collection.find = (...args) => {
+        const result = prevFind.bind(collection)(...args);
+        result.cmd = { query: this.getCollectionQuery(collectionConfig.name, result) };
+        result.options = { db: collection.s.db };
+        result.ns = `${collection.s.namespace.db}.${collection.s.namespace.collection}`;
+        result.Collection = collection;
+        return result;
+      };
+
+      const prevDeleteOne = collection.deleteOne.bind(collection);
+
+      collection.deleteOne = async (...args) => {
+        const response = await prevDeleteOne(...args);
+        const { deletedCount: n, acknowledged: ok } = response;
+        // eslint-disable-next-line id-length
+        return { ...response, result: { n, ok } };
+      };
+
+      const prevUpdateMany = collection.updateMany.bind(collection);
+      collection.updateMany = async (...args) => {
+        const response = await prevUpdateMany(...args);
+        const { modifiedCount: n, acknowledged: ok } = response;
+        // eslint-disable-next-line id-length
+        return { ...response, result: { n, ok } };
+      };
+
+      const prevInsertOne = collection.insertOne.bind(collection);
+      collection.insertOne = async (...args) => {
+        const response = await prevInsertOne(...args);
+        // eslint-disable-next-line id-length
+        const count = response.acknowledged ? 1 : 0;
+        // eslint-disable-next-line id-length
+        return { ...response, result: { n: count, ok: count } };
+      };
+
+      const prevFindOneAndUpdate = collection.findOneAndUpdate.bind(collection);
+      collection.findOneAndUpdate = async (...args) => {
+        const response = await prevFindOneAndUpdate(...args);
+        const { ok } = response;
+        return { ...response, modifiedCount: ok };
+      };
+
+      const prevReplaceOne = collection.replaceOne.bind(collection);
+      collection.replaceOne = async (...args) => {
+        const response = await prevReplaceOne(...args);
+        const count = response.acknowledged ? 1 : 0;
+        // eslint-disable-next-line id-length
+        return { ...response, result: { n: count, ok: count } };
+      };
+
+      const prevUpdateOne = collection.updateOne.bind(collection);
+      collection.updateOne = async (...args) => {
+        const response = await prevUpdateOne(...args);
+        const count = response.acknowledged ? 1 : 0;
+        // eslint-disable-next-line id-length
+        return { ...response, result: { n: count, ok: count } };
+      };
+
+      await this.db
+        .command({
+          collMod: collectionConfig.name,
+          ...collectionOptions
+        });
+      return collection;
+    } catch (error) {
+      const collection = await this.db
+        .command({
+          collMod: collectionConfig.name,
+          ...collectionOptions
+        });
+      collection.find = (...args) => {
+        const result = collection.find(...args);
+        result.Collection = collection;
+        return result;
+      };
+      return collection;
     }
   }
 
