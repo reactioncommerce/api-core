@@ -3,7 +3,7 @@ import { createRequire } from "module";
 import diehard from "diehard";
 import express from "express";
 import _ from "lodash";
-import mongodb from "mongodb";
+import * as mongodb from "mongodb";
 import SimpleSchema from "simpl-schema";
 import collectionIndex from "@reactioncommerce/api-utils/collectionIndex.js";
 import getAbsoluteUrl from "@reactioncommerce/api-utils/getAbsoluteUrl.js";
