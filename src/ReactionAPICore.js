@@ -334,6 +334,8 @@ export default class ReactionAPICore {
       return { ...response, result: { n, ok } };
     };
 
+    collection.removeOne = collection.deleteOne.bind(collection);
+
     const prevUpdateMany = collection.updateMany.bind(collection);
     collection.updateMany = async (...args) => {
       const response = await prevUpdateMany(...args);
