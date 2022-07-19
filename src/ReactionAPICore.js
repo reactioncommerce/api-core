@@ -1,3 +1,4 @@
+/* eslint-disable no-extra-bind */
 import { createServer } from "http";
 import { createRequire } from "module";
 import diehard from "diehard";
@@ -318,67 +319,87 @@ export default class ReactionAPICore {
    */
   applyMongoV3BackwardCompatible(collection) {
     const prevFind = collection.find.bind(collection);
-    collection.find = (...args) => {
+    collection.find = ((...args) => {
       const result = prevFind(...args);
       result.cmd = { query: result[Reflect.ownKeys(result).find((symbol) => String(symbol) === "Symbol(filter)")] };
       result.options = { db: collection.s.db };
       result.ns = `${collection.s.namespace.db}.${collection.s.namespace.collection}`;
       return result;
-    };
+    }).bind(collection);
+
+    const acknowledgedToOk = (acknowledged) => (acknowledged ? 1 : 0);
 
     const prevDeleteOne = collection.deleteOne.bind(collection);
-    collection.deleteOne = async (...args) => {
+    collection.deleteOne = (async (...args) => {
       const response = await prevDeleteOne(...args);
-      const { deletedCount: n, acknowledged: ok } = response;
       // eslint-disable-next-line id-length
-      return { ...response, result: { n, ok } };
-    };
+      return { ...response, result: { n: response.deletedCount, ok: acknowledgedToOk(response.acknowledged) } };
+    }).bind(collection);
 
     collection.removeOne = collection.deleteOne.bind(collection);
 
     const prevUpdateMany = collection.updateMany.bind(collection);
-    collection.updateMany = async (...args) => {
+    collection.updateMany = (async (...args) => {
       const response = await prevUpdateMany(...args);
-      const { modifiedCount: n, acknowledged: ok } = response;
       // eslint-disable-next-line id-length
-      return { ...response, result: { n, ok } };
-    };
+      return { ...response, result: { n: response.modifiedCount, ok: acknowledgedToOk(response.acknowledged) } };
+    }).bind(collection);
 
     const prevInsertOne = collection.insertOne.bind(collection);
-    collection.insertOne = async (...args) => {
+    collection.insertOne = (async (...args) => {
       const response = await prevInsertOne(...args);
       // eslint-disable-next-line id-length
-      const count = response.acknowledged ? 1 : 0;
-      // eslint-disable-next-line id-length
-      return { ...response, result: { n: count, ok: count } };
-    };
+      return { ...response, result: { n: response.acknowledged ? 1 : 0, ok: acknowledgedToOk(response.acknowledged) } };
+    }).bind(collection);
 
     const prevFindOneAndUpdate = collection.findOneAndUpdate.bind(collection);
-    collection.findOneAndUpdate = async (...args) => {
+    collection.findOneAndUpdate = (async (...args) => {
       const options = args[2];
       if (options && typeof options.returnOriginal !== "undefined") {
         args[2].returnDocument = options.returnOriginal ? mongodb.ReturnDocument.BEFORE : mongodb.ReturnDocument.AFTER;
       }
       const response = await prevFindOneAndUpdate(...args);
-      const { ok } = response;
-      return { ...response, modifiedCount: ok };
-    };
+      return { ...response, modifiedCount: response.lastErrorObject.n };
+    }).bind(collection);
 
     const prevReplaceOne = collection.replaceOne.bind(collection);
-    collection.replaceOne = async (...args) => {
+    collection.replaceOne = (async (...args) => {
       const response = await prevReplaceOne(...args);
-      const count = response.acknowledged ? 1 : 0;
       // eslint-disable-next-line id-length
-      return { ...response, result: { n: count, ok: count } };
-    };
+      return { ...response, result: { n: response.modifiedCount, ok: acknowledgedToOk(response.acknowledged) } };
+    }).bind(collection);
 
     const prevUpdateOne = collection.updateOne.bind(collection);
-    collection.updateOne = async (...args) => {
+    collection.updateOne = (async (...args) => {
       const response = await prevUpdateOne(...args);
-      const count = response.acknowledged ? 1 : 0;
       // eslint-disable-next-line id-length
-      return { ...response, result: { n: count, ok: count } };
-    };
+      return { ...response, result: { n: response.modifiedCount, ok: acknowledgedToOk(response.acknowledged) } };
+    }).bind(collection);
+
+    const prevBulkWrite = collection.bulkWrite.bind(collection);
+    collection.bulkWrite = (async (...args) => {
+      const response = await prevBulkWrite(...args);
+      const {
+        nInserted,
+        nUpserted,
+        nMatched,
+        nModified,
+        nRemoved
+      } = response.result;
+      return {
+        ...response,
+        nInserted,
+        nUpserted,
+        nMatched,
+        nModified,
+        nRemoved,
+        insertedCount: nInserted,
+        matchedCount: nMatched,
+        modifiedCount: nModified,
+        deletedCount: nRemoved,
+        upsertedCount: nUpserted
+      };
+    }).bind(collection);
   }
 
   /**

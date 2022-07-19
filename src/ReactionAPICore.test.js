@@ -36,10 +36,10 @@ test("can pass version", () => {
 
 test("can pass custom appEvents", () => {
   const customAppEvents = {
-    async emit() {},
-    on() {},
-    stop() {},
-    resume() {}
+    async emit() { },
+    on() { },
+    stop() { },
+    resume() { }
   };
 
   const api = new ReactionAPICore({ appEvents: customAppEvents });
@@ -67,9 +67,21 @@ test("getCollection should return correct values", async () => {
     deleteOne: jest.fn().mockReturnValue({ deletedCount: 1, acknowledged: true }),
     updateMany: jest.fn().mockReturnValue({ modifiedCount: 2, acknowledged: true }),
     insertOne: jest.fn().mockReturnValue({ acknowledged: true }),
-    findOneAndUpdate: jest.fn().mockReturnValue({ ok: 1 }),
-    replaceOne: jest.fn().mockReturnValue({ acknowledged: true }),
-    updateOne: jest.fn().mockReturnValue({ acknowledged: true }),
+    findOneAndUpdate: jest.fn().mockReturnValue({ ok: 1, lastErrorObject: { n: 1 } }),
+    replaceOne: jest.fn().mockReturnValue({ modifiedCount: 1, acknowledged: true }),
+    updateOne: jest.fn().mockReturnValue({ modifiedCount: 1, acknowledged: true }),
+    bulkWrite: jest.fn().mockReturnValue({
+      result: {
+        ok: 1,
+        writeErrors: [],
+        writeConcernErrors: [],
+        nInserted: 1,
+        nUpserted: 2,
+        nMatched: 3,
+        nModified: 4,
+        nRemoved: 5
+      }
+    }),
     // eslint-disable-next-line id-length
     s: {
       db: jest.fn(),
@@ -95,11 +107,11 @@ test("getCollection should return correct values", async () => {
 
   const deleteOneResult = await collection.deleteOne({});
   expect(mockCollection.deleteOne).toBeCalled();
-  expect(deleteOneResult).toEqual({ ...deleteOneResult, result: { n: 1, ok: true } });
+  expect(deleteOneResult).toEqual({ ...deleteOneResult, result: { n: 1, ok: 1 } });
 
   const updateManyResult = await collection.updateMany({});
   expect(mockCollection.updateMany).toBeCalled();
-  expect(updateManyResult).toEqual({ ...updateManyResult, result: { n: 2, ok: true } });
+  expect(updateManyResult).toEqual({ ...updateManyResult, result: { n: 2, ok: 1 } });
 
   const insertOneResult = await collection.insertOne({});
   expect(mockCollection.insertOne).toBeCalled();
@@ -116,4 +128,20 @@ test("getCollection should return correct values", async () => {
   const updateOneResult = await collection.updateOne({});
   expect(mockCollection.updateOne).toBeCalled();
   expect(updateOneResult).toEqual({ ...updateOneResult, result: { n: 1, ok: 1 } });
+
+  const bulkWriteResult = await collection.bulkWrite({});
+  expect(mockCollection.updateOne).toBeCalled();
+  expect(bulkWriteResult).toEqual({
+    ...bulkWriteResult,
+    nInserted: 1,
+    nUpserted: 2,
+    nMatched: 3,
+    nModified: 4,
+    nRemoved: 5,
+    insertedCount: 1,
+    upsertedCount: 2,
+    matchedCount: 3,
+    modifiedCount: 4,
+    deletedCount: 5
+  });
 });
