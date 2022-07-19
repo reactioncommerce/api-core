@@ -278,11 +278,7 @@ export default class ReactionAPICore {
               // `createCollection`, in order to add validation options.
               // eslint-disable-next-line no-await-in-loop
               this.collections[collectionKey] = await this.getCollection(collectionConfig, collectionOptions); //
-
-
-              /* eslint-enable promise/no-promise-in-callback */
-
-              // this.collections[collectionKey] = await getCollectionPromise; // eslint-disable-line no-await-in-loop
+              this.applyMongoV3BackwardCompatible(this.collections[collectionKey]);
 
               // If the collection config has `indexes` key, define all requested indexes
               if (Array.isArray(collectionConfig.indexes)) {
@@ -306,7 +302,7 @@ export default class ReactionAPICore {
    * @param {Object} collectionOptions - The collection options
    * @returns {Object} - legacy collection
    */
-  async getRawCollection(collectionConfig, collectionOptions) {
+  async getCollection(collectionConfig, collectionOptions) {
     try {
       return this.db.collection(collectionConfig.name, collectionOptions);
     } catch {
@@ -316,34 +312,17 @@ export default class ReactionAPICore {
   }
 
   /**
-   * @summary Get modified collection object
-   * @param {Object} collectionConfig - The collection config
-   * @param {Object} collectionOptions - The collection options
-   * @returns {Object} - Modified collection
-   */
-  async getCollection(collectionConfig, collectionOptions) {
-    const collection = await this.getRawCollection(collectionConfig, collectionOptions);
-    await this.db
-      .command({
-        collMod: collectionConfig.name,
-        ...collectionOptions
-      });
-    return this.applyMongoV3BackwardCompatible(collection);
-  }
-
-  /**
    * @summary Apply MongoV3 backward compatible
    * @param {Object} collection - The legacy collection object
-   * @returns {Object} - The modified collection object
+   * @returns {undefined} Nothing
    */
-  async applyMongoV3BackwardCompatible(collection) {
+  applyMongoV3BackwardCompatible(collection) {
     const prevFind = collection.find.bind(collection);
     collection.find = (...args) => {
       const result = prevFind(...args);
       result.cmd = { query: result[Reflect.ownKeys(result).find((symbol) => String(symbol) === "Symbol(filter)")] };
       result.options = { db: collection.s.db };
       result.ns = `${collection.s.namespace.db}.${collection.s.namespace.collection}`;
-      result.Collection = collection;
       return result;
     };
 
@@ -398,8 +377,6 @@ export default class ReactionAPICore {
       // eslint-disable-next-line id-length
       return { ...response, result: { n: count, ok: count } };
     };
-
-    return collection;
   }
 
   /**
