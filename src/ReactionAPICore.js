@@ -18,8 +18,9 @@ import createApolloServer from "./createApolloServer.js";
 import importPluginsJSONFile from "./importPluginsJSONFile.js";
 import coreResolvers from "./graphql/resolvers/index.js";
 
+
 const require = createRequire(import.meta.url); // eslint-disable-line
-const { PubSub } = require("apollo-server");
+const { PubSub } = require("graphql-subscriptions");
 
 const coreGraphQLSchema = importAsString("./graphql/schema.graphql");
 const coreGraphQLSubscriptionSchema = importAsString("./graphql/subscription.graphql");

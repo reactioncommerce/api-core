@@ -9,7 +9,8 @@ import createDataLoaders from "./util/createDataLoaders.js";
 
 const require = createRequire(import.meta.url);
 const { mergeTypeDefs } = require("@graphql-tools/merge");
-const { gql, makeExecutableSchema, mergeSchemas } = require("apollo-server");
+const { gql, mergeSchemas } = require("apollo-server");
+const { makeExecutableSchema } = require("@graphql-tools/schema");
 const { ApolloServer } = require("apollo-server-express");
 const { buildFederatedSchema } = require("@apollo/federation");
 
