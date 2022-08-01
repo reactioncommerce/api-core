@@ -1,4 +1,3 @@
-import { createServer } from "http";
 import { createRequire } from "module";
 import diehard from "diehard";
 import express from "express";
@@ -18,9 +17,9 @@ import createApolloServer from "./createApolloServer.js";
 import importPluginsJSONFile from "./importPluginsJSONFile.js";
 import coreResolvers from "./graphql/resolvers/index.js";
 
-
 const require = createRequire(import.meta.url); // eslint-disable-line
 const { PubSub } = require("graphql-subscriptions");
+const { RedisPubSub } = require("graphql-redis-subscriptions");
 
 const coreGraphQLSchema = importAsString("./graphql/schema.graphql");
 const coreGraphQLSubscriptionSchema = importAsString("./graphql/subscription.graphql");
@@ -32,7 +31,13 @@ const {
   PORT,
   REACTION_LOG_LEVEL,
   REACTION_SHOULD_INIT_REPLICA_SET,
-  ROOT_URL
+  ROOT_URL,
+  REDIS_PUB_SUB_URL,
+  REDIS_PUB_SUB_HOST,
+  REDIS_PUB_SUB_PORT,
+  REDIS_PUB_SUB_USERNAME,
+  REDIS_PUB_SUB_PASSWORD,
+  REDIS_PUB_SUB_DB
 } = config;
 
 const debugLevels = ["DEBUG", "TRACE"];
@@ -108,6 +113,23 @@ const startOptionsSchema = new SimpleSchema({
 
 const listenForDeath = _.once(diehard.listen.bind(diehard));
 
+let pubSub;
+if (REDIS_PUB_SUB_URL) {
+  pubSub = new RedisPubSub({ connection: REDIS_PUB_SUB_URL });
+} else if (REDIS_PUB_SUB_HOST) {
+  pubSub = new RedisPubSub({
+    connection: {
+      host: REDIS_PUB_SUB_HOST,
+      port: REDIS_PUB_SUB_PORT,
+      db: REDIS_PUB_SUB_DB,
+      username: REDIS_PUB_SUB_USERNAME,
+      password: REDIS_PUB_SUB_PASSWORD
+    }
+  });
+} else {
+  pubSub = new PubSub();
+}
+
 export default class ReactionAPICore {
   constructor(options = {}) {
     optionsSchema.validate(options);
@@ -153,11 +175,10 @@ export default class ReactionAPICore {
       // In a large production app, you may want to use an external pub-sub system.
       // See https://www.apollographql.com/docs/apollo-server/features/subscriptions.html#PubSub-Implementations
       // We may eventually bind this directly to Kafka.
-      pubSub: new PubSub()
+      pubSub
     };
 
     const schemas = [coreGraphQLSchema];
-
     if (REACTION_GRAPHQL_SUBSCRIPTIONS_ENABLED) {
       schemas.push(coreGraphQLSubscriptionSchema);
       this.hasSubscriptionsEnabled = true;
@@ -422,15 +443,21 @@ export default class ReactionAPICore {
    * @summary Creates the Apollo server and the Express app
    * @returns {undefined}
    */
-  initServer() {
+  async initServer() {
     const { httpServer, serveStaticPaths = [] } = this.options;
 
-    const { apolloServer, expressApp, path } = createApolloServer({
+    const {
+      apolloServer,
+      expressApp,
+      path,
+      appHttpServer
+    } = await createApolloServer({
       context: this.context,
       debug: debugLevels.includes(REACTION_LOG_LEVEL),
       expressMiddleware: this.expressMiddleware,
       ...this.graphQL,
-      functionsByType: this.functionsByType
+      functionsByType: this.functionsByType,
+      httpServer
     });
 
     this.apolloServer = apolloServer;
@@ -440,7 +467,7 @@ export default class ReactionAPICore {
     this.graphQLServerUrl = getAbsoluteUrl(this.rootUrl, path);
 
     // HTTP server for GraphQL subscription websocket handlers
-    this.httpServer = httpServer || createServer(this.expressApp);
+    this.httpServer = appHttpServer;
 
     if (
       REACTION_APOLLO_FEDERATION_ENABLED &&
@@ -450,10 +477,9 @@ export default class ReactionAPICore {
     }
 
     if (REACTION_GRAPHQL_SUBSCRIPTIONS_ENABLED) {
-      apolloServer.installSubscriptionHandlers(this.httpServer);
       this.graphQLServerSubscriptionUrl = getAbsoluteUrl(
         this.rootUrl.replace("http", "ws"),
-        apolloServer.subscriptionsPath
+        "/graphql"
       );
     }
 
@@ -477,7 +503,7 @@ export default class ReactionAPICore {
 
     const { port, silent } = options;
 
-    if (!this.httpServer) this.initServer();
+    if (!this.httpServer) await this.initServer();
 
     return new Promise((resolve, reject) => {
       if (!port) {
