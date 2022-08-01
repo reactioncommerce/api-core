@@ -136,7 +136,7 @@ export default async function createApolloServer(options = {}) {
         async serverWillStart() {
           return {
             async drainServer() {
-              await wsServerCleanup.dispose();
+              if (wsServerCleanup) await wsServerCleanup.dispose();
             }
           };
         }

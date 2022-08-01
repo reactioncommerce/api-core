@@ -52,12 +52,12 @@ export default envalid.cleanEnv(process.env, {
   REDIS_PUB_SUB_URL: str({
     default: undefined,
     desc: "Redis Pub/Sub connection url",
-    example: "localhost"
+    example: "redis://username:password@127.0.0.1:6379/0"
   }),
   REDIS_PUB_SUB_HOST: str({
     default: undefined,
     desc: "Redis Pub/Sub host",
-    example: "redis://:authpassword@127.0.0.1:6380/4"
+    example: "localhost"
   }),
   REDIS_PUB_SUB_PORT: num({
     default: 6379,

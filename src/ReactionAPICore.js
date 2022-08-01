@@ -31,13 +31,7 @@ const {
   PORT,
   REACTION_LOG_LEVEL,
   REACTION_SHOULD_INIT_REPLICA_SET,
-  ROOT_URL,
-  REDIS_PUB_SUB_URL,
-  REDIS_PUB_SUB_HOST,
-  REDIS_PUB_SUB_PORT,
-  REDIS_PUB_SUB_USERNAME,
-  REDIS_PUB_SUB_PASSWORD,
-  REDIS_PUB_SUB_DB
+  ROOT_URL
 } = config;
 
 const debugLevels = ["DEBUG", "TRACE"];
@@ -113,22 +107,30 @@ const startOptionsSchema = new SimpleSchema({
 
 const listenForDeath = _.once(diehard.listen.bind(diehard));
 
-let pubSub;
-if (REDIS_PUB_SUB_URL) {
-  pubSub = new RedisPubSub({ connection: REDIS_PUB_SUB_URL });
-} else if (REDIS_PUB_SUB_HOST) {
-  pubSub = new RedisPubSub({
-    connection: {
-      host: REDIS_PUB_SUB_HOST,
-      port: REDIS_PUB_SUB_PORT,
-      db: REDIS_PUB_SUB_DB,
-      username: REDIS_PUB_SUB_USERNAME,
-      password: REDIS_PUB_SUB_PASSWORD
-    }
-  });
-} else {
-  pubSub = new PubSub();
-}
+const getPubSub = () => {
+  const {
+    REDIS_PUB_SUB_URL,
+    REDIS_PUB_SUB_HOST,
+    REDIS_PUB_SUB_PORT,
+    REDIS_PUB_SUB_USERNAME,
+    REDIS_PUB_SUB_PASSWORD,
+    REDIS_PUB_SUB_DB
+  } = config;
+
+  if (REDIS_PUB_SUB_URL) return new RedisPubSub({ connection: REDIS_PUB_SUB_URL });
+  if (REDIS_PUB_SUB_HOST) {
+    return new RedisPubSub({
+      connection: {
+        host: REDIS_PUB_SUB_HOST,
+        port: REDIS_PUB_SUB_PORT,
+        db: REDIS_PUB_SUB_DB,
+        username: REDIS_PUB_SUB_USERNAME,
+        password: REDIS_PUB_SUB_PASSWORD
+      }
+    });
+  }
+  return new PubSub();
+};
 
 export default class ReactionAPICore {
   constructor(options = {}) {
@@ -175,7 +177,7 @@ export default class ReactionAPICore {
       // In a large production app, you may want to use an external pub-sub system.
       // See https://www.apollographql.com/docs/apollo-server/features/subscriptions.html#PubSub-Implementations
       // We may eventually bind this directly to Kafka.
-      pubSub
+      pubSub: getPubSub()
     };
 
     const schemas = [coreGraphQLSchema];
