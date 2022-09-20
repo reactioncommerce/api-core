@@ -1,3 +1,9 @@
+# This repository is deprecated
+
+This code is now located in our monorepo [here](https://github.com/reactioncommerce/reaction/tree/trunk/packages/api-core)
+
+
+
 # Reaction API Core
 
 This NPM package provides the `ReactionAPICore` class. Use this to build a NodeJS microservice that is compatible with the Reaction Commerce platform, or to build your main Reaction Commerce API if you don't want to start by forking the `https://github.com/reactioncommerce/reaction` project.
