@@ -1,7 +1,11 @@
 import { createRequire } from "module";
+import { createServer } from "http";
+import { WebSocketServer } from "ws";
+import { useServer } from "graphql-ws/lib/use/ws";
 import cors from "cors";
 import express from "express";
 import bodyParser from "body-parser";
+import { ApolloServerPluginLandingPageDisabled, ApolloServerPluginLandingPageLocalDefault } from "apollo-server-core";
 import config from "./config.js";
 import buildContext from "./util/buildContext.js";
 import getErrorFormatter from "./util/getErrorFormatter.js";
@@ -9,7 +13,8 @@ import createDataLoaders from "./util/createDataLoaders.js";
 
 const require = createRequire(import.meta.url);
 const { mergeTypeDefs } = require("@graphql-tools/merge");
-const { gql, makeExecutableSchema, mergeSchemas } = require("apollo-server");
+const { gql, mergeSchemas } = require("apollo-server");
+const { makeExecutableSchema } = require("@graphql-tools/schema");
 const { ApolloServer } = require("apollo-server-express");
 const { buildFederatedSchema } = require("@apollo/federation");
 
@@ -29,13 +34,14 @@ const resolverValidationOptions = {
  * @param {Object} options Options
  * @returns {ExpressApp} The express app
  */
-export default function createApolloServer(options = {}) {
+export default async function createApolloServer(options = {}) {
   const {
     context: contextFromOptions,
     expressMiddleware,
     resolvers,
     functionsByType,
-    typeDefsObj
+    typeDefsObj,
+    httpServer
   } = options;
   const path = options.path || DEFAULT_GRAPHQL_PATH;
 
@@ -57,8 +63,10 @@ export default function createApolloServer(options = {}) {
 
   // Create a custom Express server so that we can add our own middleware and HTTP routes
   const app = express();
+  const appHttpServer = httpServer || createServer(app);
   let schema;
   let subscriptions = false;
+  let wsServerCleanup;
 
   if (config.REACTION_APOLLO_FEDERATION_ENABLED) {
     // Build federated schema from typeDefs and resolvers
@@ -84,6 +92,10 @@ export default function createApolloServer(options = {}) {
     subscriptions = {
       path
     };
+
+    const wsServer = new WebSocketServer({ server: appHttpServer, path: DEFAULT_GRAPHQL_PATH });
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    wsServerCleanup = useServer({ schema, context: { ...contextFromOptions } }, wsServer);
   }
 
   const apolloServer = new ApolloServer({
@@ -118,7 +130,19 @@ export default function createApolloServer(options = {}) {
     schema,
     subscriptions,
     introspection: config.GRAPHQL_INTROSPECTION_ENABLED,
-    playground: config.GRAPHQL_PLAYGROUND_ENABLED
+    plugins: [
+      // Proper shutdown for the WebSocket server.
+      {
+        async serverWillStart() {
+          return {
+            async drainServer() {
+              if (wsServerCleanup) await wsServerCleanup.dispose();
+            }
+          };
+        }
+      },
+      config.GRAPHQL_PLAYGROUND_ENABLED ? ApolloServerPluginLandingPageLocalDefault({ embed: true }) : ApolloServerPluginLandingPageDisabled()
+    ]
   });
 
   const gqlMiddleware = expressMiddleware.filter((def) => def.route === "graphql" || def.route === "all");
@@ -161,11 +185,13 @@ export default function createApolloServer(options = {}) {
     app.handle(req, res);
   });
 
+  await apolloServer.start();
   apolloServer.applyMiddleware({ app, cors: true, path });
 
   return {
     apolloServer,
     expressApp: app,
+    appHttpServer,
     path
   };
 }
